@@ -10,7 +10,9 @@ from  rutas import (
 )
 
 # Cargar token desde .env
-ENV_PATH = Path(__file__).resolve().parents[1] / ".env"
+#ENV_PATH = Path(__file__).resolve().parents[1] / ".env"
+base_dir = Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__file__).parent
+ENV_PATH = base_dir / ".env"
 
 def _apply_token(token_str: str):
     global TOKEN, HEADERS
@@ -60,7 +62,6 @@ def get_list_id_from_drive(site_id, drive_id):
     return data["id"], data["name"]
 
 def listar_items_por_factura(site_id, list_id, col_internal, factura):
-    """Devuelve todos los ítems donde fields/<col_internal> == factura."""
     safe = factura.replace("'", "''")
     filtro = f"fields/{col_internal} eq '{safe}'"
     select = f"fields($select=FileRef,FileDirRef,FileLeafRef,{col_internal})"
