@@ -1,4 +1,4 @@
-import os
+import os, sys
 import requests
 from dotenv import load_dotenv,set_key
 from pathlib import Path
@@ -76,13 +76,18 @@ def listar_items_por_factura(site_id, list_id, col_internal, factura):
 
 #FUNCIÓN PRINCIPAL
 def descargar_archivo(file_ref, nombre_archivo, factura=None):
-    #onedrive_base = Path(r"C:\Users\practicante1servicio\OneDrive - kumo2\FN SERVICIOS - FANALCA")
     onedrive_base = Path.home() / "OneDrive - kumo2" / "FN SERVICIOS - FANALCA"
-    nombre_destino = f"{factura}.pdf" if factura else nombre_archivo
-    destino = Path(__file__).parent / "Facturas_descargadas" / nombre_destino
-    destino.parent.mkdir(exist_ok=True, parents=True)
 
-    archivo_local = onedrive_base / nombre_archivo 
+    base_dir = Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__file__).parent
+
+    carpeta_descargas = base_dir / "Facturas_descargadas"
+    carpeta_descargas.mkdir(parents=True, exist_ok=True)
+
+    # Nombre del archivo destino
+    nombre_destino = f"{factura}.pdf" if factura else nombre_archivo
+    destino = carpeta_descargas / nombre_destino
+
+    archivo_local = onedrive_base / nombre_archivo
 
     if archivo_local.exists():
         try:
