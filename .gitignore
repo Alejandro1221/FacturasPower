@@ -1,0 +1,74 @@
+# ENTORNOS VIRTUALES
+.venv/
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# ARCHIVOS SENSIBLES (NUNCA SUBIR!)
+.env
+.env.local
+.env.*.local
+*.env
+secrets/
+config/
+credentials/
+
+# PYTHON CACHE Y BINARIOS
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+*.pyd
+*.egg
+*.egg-info/
+dist/
+build/
+pip-wheel-metadata/
+*.manifest
+*.spec
+
+# ARCHIVOS DE LOG Y TEMPORALES
+*.log
+*.tmp
+*.bak
+*.swp
+*~
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# EDITORES E IDEs
+.vscode/
+.idea/
+*.code-workspace
+*.sublime-workspace
+*.sublime-project
+
+# ========================================
+# SALIDA DE DATOS (evita subir archivos grandes)
+# ========================================
+*.csv
+*.xlsx
+*.xls
+*.pdf
+*.txt
+*.json
+*.xml
+*.zip
+*.tar.gz
+output/
+data/
+downloads/
+
+# ========================================
+# PRUEBAS Y DESARROLLO
+# ========================================
+test_*.py
+debug_*.py
+*.test
+.pytest_cache/
+.coverage
+htmlcov/
+scripts/Facturas_descargadas/
