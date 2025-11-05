@@ -80,24 +80,24 @@ def descargar_archivo(file_ref, nombre_archivo, factura=None):
     onedrive_base = Path.home() / "OneDrive - kumo2" / "FN SERVICIOS - FANALCA"
 
     base_dir = Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__file__).parent
-
     carpeta_descargas = base_dir / "Facturas_descargadas"
     carpeta_descargas.mkdir(parents=True, exist_ok=True)
 
-    # Nombre del archivo destino
     nombre_destino = f"{factura}.pdf" if factura else nombre_archivo
     destino = carpeta_descargas / nombre_destino
 
-    archivo_local = onedrive_base / nombre_archivo
+    archivo_local = onedrive_base / file_ref.replace("/", "\\")  # <-- FIX RUTA
 
     if archivo_local.exists():
         try:
             shutil.copy2(archivo_local, destino)
             return destino
         except Exception as e:
-            raise RuntimeError(f"Error al copiar el archivo local: {e}")
+            print(f"Error al copiar {archivo_local}: {e}")
+            return None
     else:
-        raise FileNotFoundError(f"No se encontró localmente: {archivo_local}")
+        print(f"No encontrado localmente: {archivo_local}")
+        return None
 
 def buscar(facturas, on_progress=None):
     if on_progress:
