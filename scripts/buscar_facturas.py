@@ -115,42 +115,57 @@ def buscar(facturas, on_progress=None):
     list_id, list_name = get_list_id_from_drive(SITE_ID, drive_id)
 
     total = len(facturas)
-    encontradas, no_encontradas = [], []
+    encontradas, no_encontradas, descargadas = [], [], []
 
     if on_progress:
-        on_progress(f"📁 Biblioteca: {drive_name} | Lista: {list_name}")
+        on_progress(f"Biblioteca: {drive_name} | Lista: {list_name}")
 
-    # 2. Buscar una a una 
+    # === 2. BUSCAR Y DESCARGAR CADA FACTURA ===
     for i, fac in enumerate(facturas, start=1):
         if on_progress:
-            on_progress(f"Buscando factura {i}/{total}: {fac}")
+            on_progress(f"Buscando {i}/{total}: {fac}")
 
         try:
             items = listar_items_por_factura(SITE_ID, list_id, COLUMNA_FACTURA_INTERNAL, fac)
             hits = [
                 it for it in items
-                if (it.get("fields", {}).get("FileDirRef", "")
-                    .startswith(SUBCARPETA_SERVER_REL))
+                if it.get("fields", {}).get("FileDirRef", "").startswith(SUBCARPETA_SERVER_REL)
             ]
 
             if hits:
                 encontradas.append(fac)
-                if on_progress:
-                    on_progress(f"✔ {fac}: encontrada ({len(hits)})")
+                # === DESCARGAR EL PRIMER PDF ===
+                try:
+                    file_ref = hits[0]["fields"]["FileRef"]
+                    nombre_archivo = hits[0]["fields"]["FileLeafRef"]
+                    destino = descargar_archivo(file_ref, nombre_archivo, factura=fac)
+                    descargadas.append(str(destino))
+                    if on_progress:
+                        on_progress(f"{fac} → Descargado")
+                except Exception as e:
+                    if on_progress:
+                        on_progress(f"{fac}: Error al descargar ({e})")
             else:
                 no_encontradas.append(fac)
                 if on_progress:
-                    on_progress(f"✖ {fac}: no encontrada")
+                    on_progress(f"{fac}: no encontrada")
 
         except Exception as e:
             no_encontradas.append(fac)
             if on_progress:
-                on_progress(f"⚠️ {fac}: error {e}")
+                on_progress(f"{fac}: error ({e})")
 
-    # === 3. Resumen final ===
+    # === 3. RESUMEN FINAL ===
     if on_progress:
-        on_progress(f"Finalizado: {len(encontradas)} encontradas, {len(no_encontradas)} no encontradas.")
+        on_progress(
+            f"Finalizado: {len(encontradas)} encontradas, "
+            f"{len(descargadas)} descargadas, {len(no_encontradas)} no encontradas."
+        )
 
-    return {"encontradas": encontradas, "no_encontradas": no_encontradas}
+    return {
+        "encontradas": encontradas,
+        "no_encontradas": no_encontradas,
+        "descargadas": descargadas
+    }
 
 
