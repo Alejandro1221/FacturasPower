@@ -63,7 +63,7 @@ def descargar_archivo(file_ref, nombre_archivo, factura=None):
     destino = Path(__file__).parent / "Facturas_descargadas" / nombre_destino
     destino.parent.mkdir(exist_ok=True, parents=True)
 
-    archivo_local = onedrive_base / nombre_archivo  # el nombre largo real
+    archivo_local = onedrive_base / nombre_archivo 
 
     if archivo_local.exists():
         try:
@@ -74,7 +74,11 @@ def descargar_archivo(file_ref, nombre_archivo, factura=None):
     else:
         raise FileNotFoundError(f"No se encontró localmente: {archivo_local}")
 
-def buscar(facturas):
+def buscar(facturas, on_progress=None):
+    if on_progress:
+        on_progress("Conectando a SharePoint…")
+
+    # =1. Localizar biblioteca y lista 
     if DRIVE_ID:
         drive_id, drive_name = DRIVE_ID, "(usando DRIVE_ID configurado)"
     else:
@@ -85,52 +89,43 @@ def buscar(facturas):
 
     list_id, list_name = get_list_id_from_drive(SITE_ID, drive_id)
 
-    encontradas = []
-    no_encontradas = []
-
     total = len(facturas)
-    print(f"\nIniciando búsqueda en SharePoint ({total} facturas)...")
-    print(f"Biblioteca: {drive_name}\nLista: {list_name}\n")
+    encontradas, no_encontradas = [], []
 
+    if on_progress:
+        on_progress(f"📁 Biblioteca: {drive_name} | Lista: {list_name}")
+
+    # 2. Buscar una a una 
     for i, fac in enumerate(facturas, start=1):
-        print(f"[{i}/{total}] Buscando factura: {fac} ...", end=" ", flush=True)
+        if on_progress:
+            on_progress(f"Buscando factura {i}/{total}: {fac}")
 
         try:
             items = listar_items_por_factura(SITE_ID, list_id, COLUMNA_FACTURA_INTERNAL, fac)
-            hits = []
-            for it in items:
-                f = it.get("fields", {}) or {}
-                dir_ref = f.get("FileDirRef", "")
-                if not dir_ref.startswith(SUBCARPETA_SERVER_REL):
-                    continue
-                hits.append(it)
+            hits = [
+                it for it in items
+                if (it.get("fields", {}).get("FileDirRef", "")
+                    .startswith(SUBCARPETA_SERVER_REL))
+            ]
 
             if hits:
                 encontradas.append(fac)
-                print("✔ ENCONTRADA")
-                for h in hits:
-                    f = h["fields"]
-                    file_ref = f.get("FileRef")
-                    file_name = f.get("FileLeafRef", f"{fac}.pdf")
-                    try:
-                        local_path = descargar_archivo(file_ref, file_name, fac)
-                        print(f"   ⤷ Copiado como: {local_path.name}")
-                    except Exception as e:
-                        print(f"Error al descargar {file_name}: {e}")
+                if on_progress:
+                    on_progress(f"✔ {fac}: encontrada ({len(hits)})")
             else:
                 no_encontradas.append(fac)
-                print("✖ NO encontrada")
+                if on_progress:
+                    on_progress(f"✖ {fac}: no encontrada")
 
         except Exception as e:
-            print(f"Error: {e}")
             no_encontradas.append(fac)
+            if on_progress:
+                on_progress(f"⚠️ {fac}: error {e}")
 
-    print("\n=== RESUMEN FINAL ===")
-    print(f"Encontradas: {len(encontradas)}")
-    print(f"No encontradas: {len(no_encontradas)}")
-    print("=====================\n")
+    # === 3. Resumen final ===
+    if on_progress:
+        on_progress(f"Finalizado: {len(encontradas)} encontradas, {len(no_encontradas)} no encontradas.")
 
-    return {
-        "encontradas": encontradas,
-        "no_encontradas": no_encontradas
-    }
+    return {"encontradas": encontradas, "no_encontradas": no_encontradas}
+
+
