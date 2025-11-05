@@ -431,6 +431,7 @@ class App(tk.Tk):
 
             encontradas = resultado.get("encontradas", [])
             no_encontradas = resultado.get("no_encontradas", [])
+            descargadas = resultado.get("descargadas", [])
 
             self.lb_ok.delete(0, "end")
             self.lb_nok.delete(0, "end")
@@ -440,10 +441,13 @@ class App(tk.Tk):
                 self.lb_nok.insert("end", f)
 
             total = len(encontradas) + len(no_encontradas)
-            self.status.set(f"✔ Resultado: {len(encontradas)} encontradas, {len(no_encontradas)} no encontradas (de {total}).")
+            self.status.set(
+                f"Finalizado: {len(encontradas)} encontradas, "
+                f"{len(descargadas)} descargadas, {len(no_encontradas)} no encontradas."
+            )
 
         self._run_in_bg_with_progress("Buscando en SharePoint…", worker_func, done_callback)
-        
+
     def refrescar_listas(self):
         self.lb_lista.delete(0, "end")
         for f in self.facturas[:1000]:
