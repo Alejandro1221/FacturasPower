@@ -1,6 +1,6 @@
 import os
 import requests
-from dotenv import load_dotenv
+from dotenv import load_dotenv,set_key
 from pathlib import Path
 import shutil
 
@@ -10,17 +10,36 @@ from  rutas import (
 )
 
 # Cargar token desde .env
-load_dotenv(dotenv_path=Path(__file__).resolve().parents[1] / ".env")
+ENV_PATH = Path(__file__).resolve().parents[1] / ".env"
 
-TOKEN = os.getenv("GRAPH_TOKEN")
-if not TOKEN:
-    raise RuntimeError("Falta GRAPH_TOKEN en el archivo .env")
+def _apply_token(token_str: str):
+    global TOKEN, HEADERS
+    TOKEN = token_str.strip()
+    HEADERS = {"Authorization": f"Bearer {TOKEN}", "Accept": "application/json"}
 
-HEADERS = {"Authorization": f"Bearer {TOKEN}", "Accept": "application/json"}
+# lee el token actual (por si ya existe en .env)
+load_dotenv(ENV_PATH)
+TOKEN = os.getenv("GRAPH_TOKEN") or ""
+_apply_token(TOKEN)
+
 BASE = "https://graph.microsoft.com/v1.0"
+
+
+def set_graph_token(new_token: str, persist: bool = True):
+    """
+    Actualiza el token en memoria y opcionalmente lo persiste en .env.
+    """
+    if not new_token or len(new_token.strip()) < 20:
+        raise ValueError("Token inválido.")
+    if persist:
+        ENV_PATH.parent.mkdir(parents=True, exist_ok=True)
+        set_key(str(ENV_PATH), "GRAPH_TOKEN", new_token.strip())
+    _apply_token(new_token)
 
 # Funciones auxiliares
 def _get(url):
+    if not TOKEN:
+        raise RuntimeError("Falta GRAPH_TOKEN. Configúralo desde la UI (Configurar token).")
     r = requests.get(url, headers=HEADERS, timeout=30)
     r.raise_for_status()
     return r.json()

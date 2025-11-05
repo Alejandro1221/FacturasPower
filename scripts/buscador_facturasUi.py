@@ -6,6 +6,7 @@ import pandas as pd
 import threading
 from pathlib import Path
 from buscar_facturas import buscar as buscar_en_sharepoint
+from buscar_facturas import set_graph_token 
 
 
 # === PALETA DE COLORES ===
@@ -137,6 +138,7 @@ class App(tk.Tk):
         self.minsize(960, 560)
 
         apply_theme(self)
+        self._build_menu()
 
         # Variables de estado
         self.ruta_archivo = tk.StringVar()
@@ -216,6 +218,64 @@ class App(tk.Tk):
         # STATUS BAR
         ttk.Label(self, textvariable=self.status, padding=(16,8)).pack(fill="x", padx=10, pady=(0,6))
 
+    # MENÚ
+    def _build_menu(self):
+        menubar = tk.Menu(self)
+        menu_conf = tk.Menu(menubar, tearoff=0)
+        menu_conf.add_command(label="Token de Graph…", command=self._open_token_config)
+        menubar.add_cascade(label="Configuración", menu=menu_conf)
+        self.config(menu=menubar)
+
+    def _open_token_config(self):
+        win = tk.Toplevel(self)
+        win.title("Configurar token de Microsoft Graph")
+        win.transient(self)
+        win.grab_set()
+        win.resizable(False, False)
+        frm = ttk.Frame(win, padding=16, style="Card.TFrame")
+        frm.pack(fill="both", expand=True)
+
+        ttk.Label(frm, text="Pega tu token (JWT):", style="Title.TLabel").grid(row=0, column=0, sticky="w")
+
+        var_token = tk.StringVar(value="")
+        ent = ttk.Entry(frm, textvariable=var_token, width=68, show="•", style="Rounded.TEntry")
+        ent.grid(row=1, column=0, columnspan=4, sticky="ew", pady=(6,10))
+        ent.focus_set()
+
+        def toggle_show():
+            ent.config(show="" if ent.cget("show") else "•")
+            btn_ver.config(text="Ocultar" if ent.cget("show")=="" else "Mostrar")
+
+        def pegar():
+            try:
+                txt = win.clipboard_get()
+                var_token.set(txt.strip())
+            except Exception:
+                messagebox.showwarning("Portapapeles", "No se pudo leer el portapapeles.", parent=win)
+
+        def guardar():
+            tok = var_token.get().strip()
+            if len(tok) < 20:
+                messagebox.showerror("Token", "Token inválido o muy corto.", parent=win)
+                return
+            try:
+                set_graph_token(tok, persist=True)  
+                messagebox.showinfo("Token", "Token guardado correctamente.", parent=win)
+                win.destroy()
+            except Exception as e:
+                messagebox.showerror("Error", str(e), parent=win)
+
+        btn_ver = ttk.Button(frm, text="Mostrar", command=toggle_show)
+        btn_pegar = ttk.Button(frm, text="Pegar", command=pegar)
+        btn_guardar = ttk.Button(frm, text="Guardar", style="Accent.TButton", command=guardar)
+        btn_cancelar = ttk.Button(frm, text="Cancelar", command=win.destroy)
+
+        btn_ver.grid(row=2, column=0, sticky="w", pady=(0,4))
+        btn_pegar.grid(row=2, column=1, sticky="w", pady=(0,4), padx=(8,0))
+        btn_guardar.grid(row=3, column=2, sticky="e", pady=(6,0))
+        btn_cancelar.grid(row=3, column=3, sticky="e", pady=(6,0))
+
+    
     # ------- MODAL DE CARGANDO -------
     def _show_loading(self, message="Procesando..."):
         if self._loading_win and tk.Toplevel.winfo_exists(self._loading_win):
@@ -349,6 +409,21 @@ class App(tk.Tk):
 
         def done_callback(resultado, err):
             self.btn_buscar_sp.config(state=tk.NORMAL)
+
+            # --- NUEVO: si falta token, abrir diálogo y reintentar una vez
+            if err and ("Falta GRAPH_TOKEN" in str(err) or "Acceso denegado (401" in str(err) or "Acceso denegado (403" in str(err)):
+                resp = messagebox.askyesno(
+                    "Token requerido",
+                    "Parece que falta el token de Graph o no es válido.\n¿Deseas configurarlo ahora?"
+                )
+                if resp:
+                    self._open_token_config()
+                    # reintento inmediato:
+                    self.after(200, self._buscar_sharepoint)
+                else:
+                    self.status.set("🔒 Operación cancelada por falta de token.")
+                return
+
             if err:
                 messagebox.showerror("Error al buscar", str(err))
                 self.status.set("❌ Error durante la búsqueda.")
@@ -368,7 +443,7 @@ class App(tk.Tk):
             self.status.set(f"✔ Resultado: {len(encontradas)} encontradas, {len(no_encontradas)} no encontradas (de {total}).")
 
         self._run_in_bg_with_progress("Buscando en SharePoint…", worker_func, done_callback)
-
+        
     def refrescar_listas(self):
         self.lb_lista.delete(0, "end")
         for f in self.facturas[:1000]:
