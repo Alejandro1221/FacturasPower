@@ -8,6 +8,9 @@ from pathlib import Path
 from buscar_facturas import buscar as buscar_en_sharepoint
 from buscar_facturas import set_graph_token 
 
+BASE_DIR = Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__file__).parent
+
+
 
 # === PALETA DE COLORES ===
 PALETTE = {
@@ -326,10 +329,6 @@ class App(tk.Tk):
         self._loading_label = None
 
     def _run_in_bg_with_progress(self, start_message, worker_func, done_callback):
-        """
-        Muestra modal, corre worker_func(on_progress) en hilo,
-        y llama done_callback(resultado, error) en el hilo principal.
-        """
         self._show_loading(start_message)
 
         def worker():
@@ -418,11 +417,15 @@ class App(tk.Tk):
                 )
                 if resp:
                     self._open_token_config()
-                    # reintento inmediato:
-                    self.after(200, self._buscar_sharepoint)
+                    messagebox.showinfo(
+                        "Info",
+                        "Después de guardar el token, vuelve a presionar 'Buscar en SharePoint'.",
+                        parent=self
+                    )
                 else:
                     self.status.set("🔒 Operación cancelada por falta de token.")
                 return
+
 
             if err:
                 messagebox.showerror("Error al buscar", str(err))
@@ -457,7 +460,7 @@ class App(tk.Tk):
 
     def abrir_carpeta_descargas(self):
         try:
-            ruta = Path(__file__).parent / "Facturas_descargadas"
+            ruta = BASE_DIR / "Facturas_descargadas"
             ruta.mkdir(exist_ok=True, parents=True)
             if os.name == "nt":
                 os.startfile(ruta)
