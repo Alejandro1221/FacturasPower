@@ -72,3 +72,8 @@ debug_*.py
 .coverage
 htmlcov/
 scripts/Facturas_descargadas/
+
+# CACHE Y TEMPORALES DEL PROGRAMA
+.cache_resultados/
+Facturas_descargadas/
+__temp__/

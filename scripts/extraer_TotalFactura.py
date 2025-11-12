@@ -28,7 +28,7 @@ def _norm_amount(s: str) -> Optional[Decimal]:
     except:
         return None
 
-# ====== Números en letras (mejorado) ======
+# ====== Números en letras ======
 def letras_a_numero(frase: str) -> Decimal:
     frase = _strip_accents(frase.upper())
     frase = re.sub(r"[^A-ZÑ0-9\s/]", " ", frase)
@@ -66,7 +66,7 @@ def letras_a_numero(frase: str) -> Decimal:
         total += Decimal(m.group(1)) / 100
     return Decimal(total)
 
-# ====== Leer líneas (orden perfecto) ======
+# ====== Leer líneas ======
 def read_lines(path: Path) -> List[str]:
     if PDFPLUMBER_OK:
         with pdfplumber.open(path) as pdf:
@@ -158,7 +158,7 @@ def main():
     carpeta = Path(args.carpeta)
     archivos = list(carpeta.rglob("*.pdf"))
     if not archivos:
-        return  # silencio total
+        return  
 
     for pdf in archivos:
         _ = extraer_total(pdf)
