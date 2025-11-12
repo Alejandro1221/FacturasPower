@@ -7,9 +7,10 @@ import threading
 from pathlib import Path
 from buscar_facturas import buscar as buscar_en_sharepoint
 from buscar_facturas import set_graph_token 
+from vista_excel import ExcelTableViewer
+
 
 BASE_DIR = Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__file__).parent
-
 
 
 # === PALETA DE COLORES ===
@@ -111,26 +112,40 @@ def detectar_columna_factura(df: pd.DataFrame):
 
 def leer_dataframe_robusto(ruta: str) -> pd.DataFrame:
     low = ruta.lower()
+
+    # ODS
     if low.endswith(".ods"):
+        # requiere odfpy
         return pd.read_excel(ruta, engine="odf", dtype=str)
 
+    # CSV
     if low.endswith(".csv"):
         with open(ruta, "rb") as fh:
             head = fh.read(4096)
         sample = head.decode("latin-1", errors="ignore")
         sep_guess = ";" if sample.count(";") > sample.count(",") else ","
-
-        encs = ["utf-8", "utf-8-sig", "latin-1", "cp1252"]
-        last = None
-        for enc in encs:
+        for enc in ["utf-8", "utf-8-sig", "latin-1", "cp1252"]:
             try:
                 return pd.read_csv(ruta, sep=sep_guess, engine="python", encoding=enc, dtype=str)
-            except Exception as e:
-                last = e
-        raise last or Exception("No se pudo leer el CSV con los encodings probados.")
+            except Exception:
+                pass
+        raise Exception("No se pudo leer el CSV con los encodings probados.")
 
-    return pd.read_excel(ruta, dtype=str)
+    # XLSX (openpyxl)
+    if low.endswith(".xlsx"):
+        # requiere openpyxl
+        return pd.read_excel(ruta, engine="openpyxl", dtype=str)
 
+    # XLS (opcional)
+    if low.endswith(".xls"):
+        # xlrd>=2 ya no lee .xls; usa la 1.2.0
+        try:
+            return pd.read_excel(ruta, engine="xlrd", dtype=str)
+        except Exception as e:
+            raise Exception("Para .xls instala xlrd==1.2.0 o conviértelo a .xlsx") from e
+
+    # Por defecto: intentar como Excel moderno
+    return pd.read_excel(ruta, engine="openpyxl", dtype=str)
 
 # APLICACIÓN PRINCIPAL 
 class App(tk.Tk):
@@ -141,7 +156,6 @@ class App(tk.Tk):
         self.minsize(960, 560)
 
         apply_theme(self)
-        self._build_menu()
 
         # Variables de estado
         self.ruta_archivo = tk.StringVar()
@@ -152,7 +166,7 @@ class App(tk.Tk):
 
         self._loading_win = None
         self._loading_label = None
-
+        self._excel_viewer = None
         self._build_ui()
 
     def _build_ui(self):
@@ -172,6 +186,23 @@ class App(tk.Tk):
         sub.pack(fill="x", pady=(10,0))
         ttk.Label(sub, text="Columna detectada:", style="Kicker.TLabel").pack(side="left")
         ttk.Label(sub, textvariable=self.columna_detectada, foreground="#10b981", style="Kicker.TLabel").pack(side="left", padx=(6,0))
+
+        # ==== Sección Configuración (botones lado a lado) ====
+        cfg = ttk.Frame(shell, style="Card.TFrame")
+        cfg.pack(fill="x", pady=(10, 0))
+
+        btn_conf = ttk.Button(
+            cfg, text="Configurar token", style="Accent.TButton",
+            command=self._open_token_config
+        )
+        btn_conf.pack(side="left")
+
+        ttk.Label(cfg, text="  ", style="Card.TFrame").pack(side="left") 
+
+        ttk.Button(
+            cfg, text="Ver Excel…", style="TButton",
+            command=lambda: self._abrir_visor_excel()
+        ).pack(side="left")
 
         # Paneles de listas
         body = ttk.Frame(shell, style="Card.TFrame")
@@ -221,13 +252,27 @@ class App(tk.Tk):
         # STATUS BAR
         ttk.Label(self, textvariable=self.status, padding=(16,8)).pack(fill="x", padx=10, pady=(0,6))
 
-    # MENÚ
-    def _build_menu(self):
-        menubar = tk.Menu(self)
-        menu_conf = tk.Menu(menubar, tearoff=0)
-        menu_conf.add_command(label="Token de Graph…", command=self._open_token_config)
-        menubar.add_cascade(label="Configuración", menu=menu_conf)
-        self.config(menu=menubar)
+    def _abrir_visor_excel(self, path: str | None = None):
+            """
+            Abre una sola ventana de visor Excel.
+            Si ya está abierta, la trae al frente.
+            """
+            p = path or (self.ruta_archivo.get().strip() or None)
+
+            # Si ya hay una ventana abierta, reúsala
+            if self._excel_viewer and self._excel_viewer.winfo_exists():
+                try:
+                    if p:
+                        self._excel_viewer.load_file(p)  # si tu ExcelTableViewer tiene este método
+                    self._excel_viewer.lift()
+                    self._excel_viewer.focus_force()
+                    return
+                except Exception:
+                    pass
+
+            # Si no hay una abierta, crea una nueva
+            from vista_excel import ExcelTableViewer
+            self._excel_viewer = ExcelTableViewer(self, filepath=p)
 
     def _open_token_config(self):
         win = tk.Toplevel(self)
@@ -472,7 +517,8 @@ class App(tk.Tk):
         except Exception as e:
             messagebox.showerror("Error", f"No se pudo abrir la carpeta:\n{e}")
             self.status.set("Error al abrir la carpeta de descargas.")
-
+    
+    
     def limpiar(self):
         self.ruta_archivo.set("")
         self.columna_detectada.set("(sin cargar)")
