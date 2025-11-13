@@ -195,8 +195,13 @@ class App(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("FacturasPower")
-        BASE_DIR = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
-        self.iconbitmap(BASE_DIR / "icono.ico")
+        try:
+            BASE_DIR = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
+            icono = BASE_DIR / "icono.ico"
+            if icono.exists():
+                self.iconbitmap(icono)
+        except Exception as e:
+            print("No se pudo cargar el icono:", e)
         self.geometry("1024x620")
         self.minsize(960, 560)
 
