@@ -12,6 +12,10 @@ from pathlib import Path
 CACHE_DIR = Path(__file__).resolve().parent / ".cache_resultados"
 CACHE_DIR.mkdir(exist_ok=True)
 SESSION_CACHE: dict[str, list[dict]] = {}
+SESSION_CACHE.clear()
+
+for f in CACHE_DIR.glob("*.json"):
+    f.unlink(missing_ok=True)
 
 # Dependencias externas
 try:
@@ -39,6 +43,8 @@ class ExcelTableViewer(tk.Toplevel):
         self._df_full = None        # DataFrame completo (hoja actual / csv)
         self._df_filtered = None    # DF con filtro aplicado
         self._sheet_names: List[str] = []
+        self._detail_win = None
+        self._detail_text = None
         self.after(0, lambda: self.bind("<Escape>", lambda e: self.destroy()))
         self.protocol("WM_DELETE_WINDOW", self.destroy)
         
@@ -77,6 +83,14 @@ class ExcelTableViewer(tk.Toplevel):
         )
         self.btn_compare.pack(side=tk.RIGHT, padx=(8, 0))
 
+        # Botón resetear caché
+        self.btn_reset_cache = ttk.Button(
+            top,
+            text="Resetear caché",
+            command=self._reset_cache_ui
+        )
+        self.btn_reset_cache.pack(side=tk.RIGHT, padx=(8, 8))
+
         # Tree + scrolls
         mid = ttk.Frame(self)
         mid.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0, 8))
@@ -103,30 +117,23 @@ class ExcelTableViewer(tk.Toplevel):
         # doble clic: ver celda completa
         self.tree.bind("<Double-1>", self._on_double_click_cell)
     
-    
     # ---------------- Helpers internos -----------------
     def _ensure_resultado_column(self):
-        """Asegura que exista la columna 'Resultado' y reubica al final.
-           Si existe 'Observaciones', la renombra o elimina según corresponda."""
         if self._df_full is None:
             return
+
+        # normalizamos columnas
         cols_norm = {c.strip().lower(): c for c in self._df_full.columns}
+
         if "observaciones" in cols_norm:
             real_col = cols_norm["observaciones"]
-            if "Resultado" in self._df_full.columns:
-                # Ya existe Resultado: eliminar Observaciones para no duplicar
-                self._df_full.drop(columns=[real_col], inplace=True)
-            else:
-                # Renombrar Observaciones -> Resultado
-                self._df_full.rename(columns={real_col: "Resultado"}, inplace=True)
-        else:
-            if "Resultado" not in self._df_full.columns:
-                self._df_full["Resultado"] = ""
+            self._df_full.drop(columns=[real_col], inplace=True)
 
-        # Mover Resultado al final
-        if "Resultado" in self._df_full.columns:
-            cols = [c for c in self._df_full.columns if c != "Resultado"] + ["Resultado"]
-            self._df_full = self._df_full[cols]
+        if "Resultado" not in self._df_full.columns:
+            self._df_full["Resultado"] = ""
+
+        cols = [c for c in self._df_full.columns if c != "Resultado"] + ["Resultado"]
+        self._df_full = self._df_full[cols]
 
     def _drop_empty_factura_rows(self):
         """Elimina filas donde la columna 'Factura' esté vacía o en blanco."""
@@ -283,38 +290,70 @@ class ExcelTableViewer(tk.Toplevel):
                 self.after(0, lambda: self.btn_compare.config(state="normal"))
 
         threading.Thread(target=worker, daemon=True).start()
+    
+    def _reset_cache_ui(self):
+        """Limpia la caché de disco y de sesión, y borra la columna Resultado."""
+        from tkinter import messagebox
 
+        msg = (
+            "¿Seguro que deseas borrar toda la caché?\n\n"
+            "• Se eliminarán resultados guardados.\n"
+            "• Se borrará la caché de disco.\n"
+            "• La columna 'Resultado' se limpiará.\n\n"
+            "Tendrás que volver a comparar las facturas."
+        )
+
+        resp = messagebox.askyesno("Resetear caché", msg)
+        if not resp:
+            return
+
+        # 1) Limpiar caché de sesión
+        SESSION_CACHE.clear()
+
+        # 2) Limpiar caché en disco
+        try:
+            for f in CACHE_DIR.glob("*.json"):
+                f.unlink(missing_ok=True)
+        except Exception as e:
+            messagebox.showerror("Error", f"No se pudo limpiar caché:\n{e}")
+            return
+
+        # 3) Limpiar resultados de la tabla
+        if self._df_full is not None and "Resultado" in self._df_full.columns:
+            self._df_full["Resultado"] = ""
+
+        # Refrescar UI
+        self.apply_filter()
+        self._update_info()
+
+        messagebox.showinfo("Listo", "La caché ha sido eliminada correctamente.")
+
+    #--Inserción de resultados en tabla y caché --
     def _insertar_resultados_en_tabla(self, resultados):
         if self._df_full is None:
             return
 
-        df = self._df_full.copy()
-
-        # Garantizar columna Resultado (y manejar Observaciones)
-        cols_norm = {c.strip().lower(): c for c in df.columns}
-        if "observaciones" in cols_norm:
-            real_col = cols_norm["observaciones"]
-            if "Resultado" in df.columns:
-                df.drop(columns=[real_col], inplace=True)
-            else:
-                df.rename(columns={real_col: "Resultado"}, inplace=True)
-        else:
-            if "Resultado" not in df.columns:
-                df["Resultado"] = ""
+        # Aseguramos que Observaciones ya no exista y Resultado esté lista
+        self._ensure_resultado_column()
+        df = self._df_full
 
         # Map factura -> estado
         estado_map = {r.get("factura"): r.get("estado") for r in resultados}
 
-        # Escribir Resultado
+        # Escribir Resultado sin usar nunca Observaciones
         for i, row in df.iterrows():
             factura = str(row.get("Factura", "")).strip()
+            if not factura:
+                continue
+
             estado = estado_map.get(factura)
             if not estado:
-                # si no hay resultado, lo dejamos como está (vacío o lo que traiga)
+                # si no hay resultado, dejamos lo que tenga (vacío o manual)
                 continue
+
             df.at[i, "Resultado"] = (
-                "Correcto"     if estado == "OK" else
-                "Verificar"    if estado == "NO_COINCIDE" else
+                "Correcto"      if estado == "OK" else
+                "Verificar"     if estado == "NO_COINCIDE" else
                 "No encontrado" if estado == "pdf_no_encontrado" else
                 "Verificar"
             )
@@ -322,10 +361,14 @@ class ExcelTableViewer(tk.Toplevel):
         # Mover Resultado al final
         if "Resultado" in df.columns:
             cols = [c for c in df.columns if c != "Resultado"] + ["Resultado"]
-            df = df[cols]
+            self._df_full = df[cols]
+        else:
+            self._df_full = df
 
-        self._df_full = df
+        # refrescar vista
         self.apply_filter()
+
+
 
     # -------------- Filtro / orden / paginación --------------
     def apply_filter(self):
@@ -566,21 +609,44 @@ class ExcelTableViewer(tk.Toplevel):
         colid = self.tree.identify_column(event.x)
         if not item_id or not colid:
             return
+
         col_index = int(colid.replace('#', '')) - 1
         cols = self.tree["columns"]
         if col_index < 0 or col_index >= len(cols):
             return
+
         values = self.tree.item(item_id, "values")
         contenido = values[col_index] if col_index < len(values) else ""
+        titulo = f"{cols[col_index]}"
 
+        # --- Reusar ventana si ya existe ---
+        if self._detail_win and self._detail_win.winfo_exists():
+            self._detail_win.title(titulo)
+            self._detail_text.config(state=tk.NORMAL)
+            self._detail_text.delete("1.0", tk.END)
+            self._detail_text.insert("1.0", contenido)
+            self._detail_text.config(state=tk.DISABLED)
+            self._detail_win.lift()
+            self._detail_win.focus_force()
+            return
+
+        # --- Crear ventana nueva si no existe ---
         top = tk.Toplevel(self)
-        top.title(f"{cols[col_index]}")
+        top.title(titulo)
         top.geometry("600x300")
+
         txt = tk.Text(top, wrap="word")
         txt.pack(fill=tk.BOTH, expand=True)
         txt.insert("1.0", contenido)
         txt.config(state=tk.DISABLED)
-        ttk.Button(top, text="Cerrar", command=top.destroy).pack(pady=6)
+
+        btn = ttk.Button(top, text="Cerrar", command=top.destroy)
+        btn.pack(pady=6)
+
+        # Guardar referencias para reutilizar
+        self._detail_win = top
+        self._detail_text = txt
+
 
 
 if __name__ == "__main__":

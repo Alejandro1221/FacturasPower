@@ -104,10 +104,37 @@ def apply_theme(root: tk.Tk):
 
 # === UTILIDADES ===
 def detectar_columna_factura(df: pd.DataFrame):
-    for c in df.columns:
-        if "factura" in str(c).lower():
+    if df is None or df.empty:
+        return None
+
+    cols = list(df.columns)
+    normalizadas = {c: str(c).strip().lower() for c in cols}
+
+    # 1) Exactamente 'factura'
+    for c, n in normalizadas.items():
+        if n == "factura":
             return c
+
+    # 2) Empiece por 'factura'
+    candidatos = [c for c, n in normalizadas.items() if n.startswith("factura")]
+    if candidatos:
+        return candidatos[0]
+
+    # 3) Contenga 'factura' pero NO 'fecha'
+    candidatos = [
+        c for c, n in normalizadas.items()
+        if "factura" in n and "fecha" not in n
+    ]
+    if candidatos:
+        return candidatos[0]
+
+    # 4) Último recurso: cualquier columna que contenga 'factura'
+    for c, n in normalizadas.items():
+        if "factura" in n:
+            return c
+
     return None
+
 
 
 def leer_dataframe_robusto(ruta: str) -> pd.DataFrame:
@@ -242,6 +269,13 @@ class App(tk.Tk):
         self.btn_descargar = ttk.Button(bottom, text="📂 Abrir carpeta de descargas",
                                         command=self.abrir_carpeta_descargas)
         self.btn_descargar.pack(side="right")
+
+        self.btn_exportar = ttk.Button(
+            bottom,
+            text="📦 Exportar carpeta",
+            command=self.exportar_descargas
+        )
+        self.btn_exportar.pack(side="right", padx=(0,8))
 
         self.btn_buscar_sp = ttk.Button(bottom, text="🔎 Buscar en SharePoint",
                                         style="Accent.TButton",
@@ -517,6 +551,46 @@ class App(tk.Tk):
         except Exception as e:
             messagebox.showerror("Error", f"No se pudo abrir la carpeta:\n{e}")
             self.status.set("Error al abrir la carpeta de descargas.")
+
+    # Exportar carpeta de descargas
+    def exportar_descargas(self):
+        from tkinter import filedialog
+
+        origen = BASE_DIR / "Facturas_descargadas"
+        origen.mkdir(exist_ok=True, parents=True)
+
+        if not any(origen.iterdir()):
+            messagebox.showinfo("Exportar", "No hay archivos para exportar.")
+            return
+
+        destino = filedialog.askdirectory(
+            title="Selecciona la carpeta donde guardar las facturas"
+        )
+
+        if not destino:
+            return
+
+        try:
+            import shutil
+            destino = Path(destino)
+
+            # Copiar archivos uno por uno
+            copiados = 0
+            for file in origen.iterdir():
+                if file.is_file():
+                    shutil.copy2(file, destino / file.name)
+                    copiados += 1
+
+            messagebox.showinfo(
+                "Exportación completa",
+                f"Se copiaron {copiados} archivos correctamente a:\n\n{destino}"
+            )
+
+            self.status.set(f"Archivos exportados a {destino}")
+
+        except Exception as e:
+            messagebox.showerror("Error", f"No se pudieron exportar los archivos:\n{e}")
+
     
     
     def limpiar(self):
