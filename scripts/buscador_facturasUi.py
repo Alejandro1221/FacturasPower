@@ -9,7 +9,6 @@ from buscar_facturas import buscar as buscar_en_sharepoint
 from buscar_facturas import set_graph_token 
 from vista_excel import ExcelTableViewer
 
-
 BASE_DIR = Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__file__).parent
 
 
@@ -25,8 +24,6 @@ PALETTE = {
     "success": "#22c55e",
     "border": "#e5eaf2",
 }
-
-APP_TITLE = "Buscador de Facturas Garantías"
 
 
 # === APLICAR TEMA ===
@@ -59,11 +56,31 @@ def apply_theme(root: tk.Tk):
     style.configure("TButton", padding=(12,6), background=PALETTE["card"], bordercolor=PALETTE["border"])
     style.map("TButton", background=[("active", PALETTE["muted"])])
 
-    style.configure("Accent.TButton", foreground="white", background=PALETTE["accent"], bordercolor=PALETTE["accent"])
-    style.map("Accent.TButton", background=[("active", PALETTE["accent_hover"])])
-
     style.configure("Success.TButton", foreground="white", background=PALETTE["success"], bordercolor=PALETTE["success"])
     style.map("Success.TButton", background=[("active", "#16a34a")]) 
+
+    style.configure(
+        "Accent.TButton",
+        foreground="white",
+        background=PALETTE["accent"],
+        bordercolor=PALETTE["accent"],
+    )
+    style.map(
+        "Accent.TButton",
+        background=[
+            ("disabled", "#cbd5e1"),               # gris cuando está deshabilitado
+            ("pressed", PALETTE["accent_hover"]),  # clic
+            ("active", PALETTE["accent_hover"]),   # hover
+        ],
+        foreground=[
+            ("disabled", "#888"),
+            ("!disabled", "white"),
+        ],
+        bordercolor=[
+            ("disabled", "#cbd5e1"),
+            ("!disabled", PALETTE["accent"]),
+        ],
+    )
 
         # Scrollbars (vertical)
     style.configure(
@@ -83,6 +100,7 @@ def apply_theme(root: tk.Tk):
         arrowcolor=[("!disabled", PALETTE["subtext"])]
     )
 
+
     # Progressbar 
     style.configure(
         "Loading.Horizontal.TProgressbar",
@@ -99,7 +117,6 @@ def apply_theme(root: tk.Tk):
         "Loading.Horizontal.TProgressbar",
         background=[("active", PALETTE["accent_hover"])]
     )
-
 
 
 # === UTILIDADES ===
@@ -134,7 +151,6 @@ def detectar_columna_factura(df: pd.DataFrame):
             return c
 
     return None
-
 
 
 def leer_dataframe_robusto(ruta: str) -> pd.DataFrame:
@@ -178,7 +194,9 @@ def leer_dataframe_robusto(ruta: str) -> pd.DataFrame:
 class App(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title(APP_TITLE)
+        self.title("FacturasPower")
+        BASE_DIR = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
+        self.iconbitmap(BASE_DIR / "icono.ico")
         self.geometry("1024x620")
         self.minsize(960, 560)
 
@@ -227,7 +245,7 @@ class App(tk.Tk):
         ttk.Label(cfg, text="  ", style="Card.TFrame").pack(side="left") 
 
         ttk.Button(
-            cfg, text="Ver Excel…", style="TButton",
+            cfg, text="Tabla Excel", style="TButton",
             command=lambda: self._abrir_visor_excel()
         ).pack(side="left")
 
@@ -262,29 +280,24 @@ class App(tk.Tk):
         bottom = ttk.Frame(shell, style="Card.TFrame")
         bottom.pack(fill="x", pady=(4,0))
 
-        self.btn_limpiar = ttk.Button(bottom, text="Limpiar lista", style="Success.TButton", command=self.limpiar)
+        self.btn_limpiar = ttk.Button(bottom,text="Limpiar lista",style="Success.TButton",command=self.limpiar)
         self.btn_limpiar.pack(side="left")
 
-    
-        self.btn_descargar = ttk.Button(bottom, text="📂 Abrir carpeta de descargas",
-                                        command=self.abrir_carpeta_descargas)
-        self.btn_descargar.pack(side="right")
+        self.btn_vaciar = ttk.Button(bottom, text="Limpiar carpeta",command=self.vaciar_descargas)
+        self.btn_vaciar.pack(side="right", padx=(8,8))
 
-        self.btn_exportar = ttk.Button(
-            bottom,
-            text="📦 Exportar carpeta",
-            command=self.exportar_descargas
-        )
+        self.btn_exportar = ttk.Button(bottom, text="📦 Exportar carpeta", command=self.exportar_descargas, state=tk.DISABLED)
         self.btn_exportar.pack(side="right", padx=(0,8))
 
-        self.btn_buscar_sp = ttk.Button(bottom, text="🔎 Buscar en SharePoint",
-                                        style="Accent.TButton",
-                                        command=self._buscar_sharepoint,
-                                        state=tk.DISABLED)
-        self.btn_buscar_sp.pack(side="right", padx=(0,8))
+        self.btn_descargar = ttk.Button(bottom,text="📂 Abrir carpeta de descargas",command=self.abrir_carpeta_descargas)
+        self.btn_descargar.pack(side="right", padx=(0,8))
+
+        self.btn_buscar_sp = ttk.Button(bottom, text="🔎 Buscar en SharePoint", style="Accent.TButton", command=self._buscar_sharepoint, state=tk.DISABLED)
+        self.btn_buscar_sp.pack(side="right", padx=(8,8))
 
         # STATUS BAR
         ttk.Label(self, textvariable=self.status, padding=(16,8)).pack(fill="x", padx=10, pady=(0,6))
+        self._actualizar_boton_exportar()
 
     def _abrir_visor_excel(self, path: str | None = None):
             """
@@ -527,6 +540,7 @@ class App(tk.Tk):
                 f"Finalizado: {len(encontradas)} encontradas, "
                 f"{len(descargadas)} descargadas, {len(no_encontradas)} no encontradas."
             )
+            self._actualizar_boton_exportar()
 
         self._run_in_bg_with_progress("Buscando en SharePoint…", worker_func, done_callback)
 
@@ -590,6 +604,55 @@ class App(tk.Tk):
 
         except Exception as e:
             messagebox.showerror("Error", f"No se pudieron exportar los archivos:\n{e}")
+        
+    def _actualizar_boton_exportar(self):
+        try:
+            origen = BASE_DIR / "Facturas_descargadas"
+            origen.mkdir(exist_ok=True, parents=True)
+
+            hay_archivos = any(origen.iterdir())
+            self.btn_exportar.config(state=tk.NORMAL if hay_archivos else tk.DISABLED)
+        except Exception:
+            # Si algo raro pasa, mejor dejarlo deshabilitado
+            self.btn_exportar.config(state=tk.DISABLED)
+
+    def vaciar_descargas(self):
+        origen = BASE_DIR / "Facturas_descargadas"
+        origen.mkdir(exist_ok=True, parents=True)
+
+        # Confirmación
+        resp = messagebox.askyesno(
+            "Vaciar carpeta",
+            "¿Seguro que deseas eliminar todos los archivos descargados?\n\n"
+        )
+        if not resp:
+            return
+
+        try:
+            import os
+            import shutil
+
+            eliminados = 0
+            for file in origen.iterdir():
+                if file.is_file():
+                    os.remove(file)
+                    eliminados += 1
+                elif file.is_dir():
+                    shutil.rmtree(file)
+                    eliminados += 1
+
+            messagebox.showinfo(
+                "Carpeta vacía",
+                f"Se eliminaron {eliminados} elementos correctamente."
+            )
+
+            # Actualizar estado del botón Exportar
+            self._actualizar_boton_exportar()
+
+            self.status.set("Carpeta de descargas vaciada.")
+
+        except Exception as e:
+            messagebox.showerror("Error", f"No se pudo vaciar la carpeta:\n{e}")
 
     
     
