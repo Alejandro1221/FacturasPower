@@ -1,5 +1,5 @@
 from __future__ import annotations
-import re,  unicodedata
+import re,  unicodedata, sys
 from pathlib import Path
 from decimal import Decimal
 from typing import List, Optional
@@ -11,8 +11,16 @@ except Exception:
     from pdfminer.high_level import extract_text as pdfminer_extract_text
     PDFPLUMBER_OK = False
 
-BASE_DIR = Path(__file__).resolve().parent
+# === RUTAS CONSISTENTES CON buscar_facturas.py ===
+if getattr(sys, "frozen", False):
+    # Modo ejecutable (PyInstaller): carpeta del .exe
+    BASE_DIR = Path(sys.executable).parent
+else:
+    # Modo desarrollo: carpeta del .py
+    BASE_DIR = Path(__file__).resolve().parent
+
 DEFAULT_DIR = BASE_DIR / "Facturas_descargadas"
+
 
 # ====== Utilidades ======
 def _strip_accents(s: str) -> str:
