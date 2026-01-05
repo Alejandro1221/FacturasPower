@@ -368,8 +368,6 @@ class ExcelTableViewer(tk.Toplevel):
         # refrescar vista
         self.apply_filter()
 
-
-
     # -------------- Filtro / orden / paginación --------------
     def apply_filter(self):
         q = self.var_query.get().strip().lower()
@@ -646,8 +644,6 @@ class ExcelTableViewer(tk.Toplevel):
         # Guardar referencias para reutilizar
         self._detail_win = top
         self._detail_text = txt
-
-
 
 if __name__ == "__main__":
     root = tk.Tk()

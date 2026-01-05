@@ -145,7 +145,7 @@ def comparar_desde_excel(
             })
             continue
 
-        # comparación exacta en Decimal (mismos pesos)
+        # comparación exacta en Decimal 
         if total_excel == total_pdf:
             estado = "OK"
         else:
@@ -180,7 +180,7 @@ def imprimir_resumen(resultados: List[Dict[str, Any]]) -> None:
     print(f"  errores_pdf:   {errores}")
     print(f"  TOTAL FILAS:   {len(resultados)}")
 
-# Uso directo por consola (opcional)
+# Uso directo por consola 
 if __name__ == "__main__":
     import argparse
     p = argparse.ArgumentParser(description="Comparar totales Excel vs PDF")

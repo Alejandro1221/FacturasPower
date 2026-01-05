@@ -11,7 +11,6 @@ from vista_excel import ExcelTableViewer
 
 BASE_DIR = Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__file__).parent
 
-
 # === PALETA DE COLORES ===
 PALETTE = {
     "bg": "#f4f7fb",        # fondo app
@@ -24,7 +23,6 @@ PALETTE = {
     "success": "#22c55e",
     "border": "#e5eaf2",
 }
-
 
 # === APLICAR TEMA ===
 def apply_theme(root: tk.Tk):
@@ -99,7 +97,6 @@ def apply_theme(root: tk.Tk):
         background=[("active", "#c7d8ff"), ("pressed", "#b5ccff")],
         arrowcolor=[("!disabled", PALETTE["subtext"])]
     )
-
 
     # Progressbar 
     style.configure(
@@ -299,6 +296,9 @@ class App(tk.Tk):
 
         self.btn_buscar_sp = ttk.Button(bottom, text="🔎 Buscar en SharePoint", style="Accent.TButton", command=self._buscar_sharepoint, state=tk.DISABLED)
         self.btn_buscar_sp.pack(side="right", padx=(8,8))
+
+        self.btn_generar_tabla = ttk.Button(bottom,text="📄 Generar tabla",command=self.generar_tabla_facturas, state=tk.DISABLED)
+        self.btn_generar_tabla.pack(side="right", padx=(0,8))
 
         # STATUS BAR
         ttk.Label(self, textvariable=self.status, padding=(16,8)).pack(fill="x", padx=10, pady=(0,6))
@@ -520,7 +520,7 @@ class App(tk.Tk):
                         parent=self
                     )
                 else:
-                    self.status.set("🔒 Operación cancelada por falta de token.")
+                    self.status.set("Operación cancelada por falta de token.")
                 return
 
 
@@ -539,8 +539,10 @@ class App(tk.Tk):
                 self.lb_ok.insert("end", f)
             for f in no_encontradas:
                 self.lb_nok.insert("end", f)
+            
+            hay_resultados = (len(encontradas) + len(no_encontradas)) > 0
+            self.btn_generar_tabla.config(state=tk.NORMAL if hay_resultados else tk.DISABLED)
 
-            total = len(encontradas) + len(no_encontradas)
             self.status.set(
                 f"Finalizado: {len(encontradas)} encontradas, "
                 f"{len(descargadas)} descargadas, {len(no_encontradas)} no encontradas."
@@ -658,15 +660,46 @@ class App(tk.Tk):
 
         except Exception as e:
             messagebox.showerror("Error", f"No se pudo vaciar la carpeta:\n{e}")
+    
+    def generar_tabla_facturas(self):
+        encontradas = [self.lb_ok.get(i) for i in range(self.lb_ok.size())]
+        no_encontradas = [self.lb_nok.get(i) for i in range(self.lb_nok.size())]
 
-    
-    
+        if not encontradas and not no_encontradas:
+            messagebox.showinfo("Generar tabla", "No hay facturas para exportar.")
+            return
+
+        data = []
+        for f in encontradas:
+            data.append({"Factura": str(f).strip(), "Estado": "Encontrada"})
+        for f in no_encontradas:
+            data.append({"Factura": str(f).strip(), "Estado": "No encontrada"})
+
+        df = pd.DataFrame(data)
+
+        filepath = filedialog.asksaveasfilename(
+            title="Guardar tabla de resultados",
+            defaultextension=".xlsx",
+            filetypes=[("Excel (*.xlsx)", "*.xlsx")]
+        )
+        if not filepath:
+            return
+
+        try:
+            df.to_excel(filepath, index=False)
+            messagebox.showinfo("Generar tabla", "Tabla Excel generada correctamente.")
+            self.status.set(f"📄 Tabla generada: {filepath}")
+        except Exception as e:
+            messagebox.showerror("Error", f"No se pudo generar la tabla:\n{e}")
+
     def limpiar(self):
         self.ruta_archivo.set("")
         self.columna_detectada.set("(sin cargar)")
         self.facturas = []
         self.refrescar_listas()
         self.status.set("Listo.")
+        if hasattr(self, "btn_generar_tabla"):
+            self.btn_generar_tabla.config(state=tk.DISABLED)
 
 
 if __name__ == "__main__":

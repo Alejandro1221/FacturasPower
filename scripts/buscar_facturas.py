@@ -1,4 +1,3 @@
-# buscar_facturas.py
 import os, sys, shutil, requests
 from pathlib import Path
 from dotenv import load_dotenv, set_key
@@ -16,24 +15,29 @@ def _apply_token(token_str: str):
     TOKEN = (token_str or "").strip()
     HEADERS = {"Authorization": f"Bearer {TOKEN}", "Accept": "application/json"}
 
-# Cargar variables desde .env (si existe)
+# Cargar variables desde .env 
 load_dotenv(ENV_PATH)
 TOKEN = os.getenv("GRAPH_TOKEN") or ""
 _apply_token(TOKEN)
 
-# Ruta base de OneDrive configurable por .env (cada usuario la pone)
-ONEDRIVE_BASE = os.getenv("ONEDRIVE_BASE")
-if not ONEDRIVE_BASE:
-    # Fallback razonable, pero se recomienda definir ONEDRIVE_BASE en .env
-    ONEDRIVE_BASE = str(Path.home() / "OneDrive - kumo2" / "FN SERVICIOS - FANALCA")
-onedrive_base = Path(ONEDRIVE_BASE)
+# Ruta base de OneDrive configurable por .env 
+raw_onedrive = (os.getenv("ONEDRIVE_BASE") or "").strip()
+
+if not raw_onedrive:
+    # Valor por defecto si no viene nada en .env
+    raw_onedrive = str(Path.home() / "OneDrive - kumo2" / "FN SERVICIOS - FANALCA")
+
+# Lista de carpetas base (soporta varias rutas separadas por ';')
+ONEDRIVE_BASES = [
+    Path(p.strip()) for p in raw_onedrive.split(";") if p.strip()
+]
 
 BASE = "https://graph.microsoft.com/v1.0"
 
 # === API Token desde UI ===
 def set_graph_token(new_token: str, persist: bool = True):
     """
-    Actualiza el token en memoria y opcionalmente lo persiste en .env (junto al .exe).
+    Actualiza el token en memoria y opcionalmente lo persiste en .env 
     """
     if not new_token or len(new_token.strip()) < 20:
         raise ValueError("Token inválido.")
@@ -42,7 +46,7 @@ def set_graph_token(new_token: str, persist: bool = True):
         set_key(str(ENV_PATH), "GRAPH_TOKEN", new_token.strip())
     _apply_token(new_token)
 
-# === Helpers HTTP Graph ===
+# === API Graph para SharePoint ===
 def _get(url: str):
     if not TOKEN:
         raise RuntimeError("Falta GRAPH_TOKEN. Configúralo desde la UI (Configuración → Token de Graph…).")
@@ -85,13 +89,18 @@ def listar_items_por_factura(site_id, list_id, col_internal, factura):
 # === Copia local desde OneDrive sincronizado ===
 def descargar_archivo(file_ref, nombre_archivo, factura=None):
     """
-    Copia desde la carpeta local de OneDrive (ONEDRIVE_BASE) a la carpeta Facturas_descargadas junto al .exe/.py
+    Copia desde las carpetas locales de OneDrive (ONEDRIVE_BASES) a la carpeta Facturas_descargadas.
+    Soporta varias carpetas configuradas en ONEDRIVE_BASE separadas por ';'.
     """
-    # Validación temprana para que sea claro el error en otros PCs
-    if not onedrive_base.exists():
+    # Validar que al menos una base exista
+    bases_existentes = [b for b in ONEDRIVE_BASES if b.exists()]
+    if not bases_existentes:
+        rutas_txt = "\n".join(str(b) for b in ONEDRIVE_BASES)
         raise RuntimeError(
-            f"ONEDRIVE_BASE no existe en este equipo:\n{onedrive_base}\n\n"
-            f"Edita el archivo .env (junto al ejecutable) y define ONEDRIVE_BASE con la ruta local correcta."
+            "Ninguna de las rutas configuradas en ONEDRIVE_BASE existe en este equipo.\n\n"
+            f"Rutas configuradas:\n{rutas_txt}\n\n"
+            "Edita el archivo .env (junto al ejecutable) y define ONEDRIVE_BASE con la(s) "
+            "ruta(s) local(es) correcta(s). Puedes poner varias separadas por ';'."
         )
 
     # Destino (carpeta estable junto al ejecutable)
@@ -101,15 +110,22 @@ def descargar_archivo(file_ref, nombre_archivo, factura=None):
     nombre_destino = f"{factura}.pdf" if factura else nombre_archivo
     destino = carpeta_descargas / nombre_destino
 
-    # Importante: usar solo FileLeafRef (nombre de archivo) para combinar con ONEDRIVE_BASE
-    archivo_local = onedrive_base / nombre_archivo
+    # Buscar el archivo en cualquiera de las bases
+    archivo_local = None
+    for base in bases_existentes:
+        candidato = base / nombre_archivo
+        if candidato.exists():
+            archivo_local = candidato
+            break
 
-    if not archivo_local.exists():
-        # Mensaje detallado para guiar al usuario
+    if not archivo_local:
+        rutas_txt = "\n".join(str(b) for b in bases_existentes)
         raise FileNotFoundError(
-            f"No se encontró localmente:\n{archivo_local}\n\n"
-            f"• Verifica que la ruta ONEDRIVE_BASE del .env sea correcta.\n"
-            f"• Asegúrate de que el PDF esté sincronizado (clic derecho → 'Siempre mantener en este dispositivo')."
+            f"No se encontró el archivo '{nombre_archivo}' en ninguna de las carpetas configuradas.\n\n"
+            f"Carpetas buscadas:\n{rutas_txt}\n\n"
+            "• Verifica que ONEDRIVE_BASE incluya todas las carpetas donde se sincronizan las facturas\n"
+            "  (por ejemplo: ...\\FANALCA;...\\FANALCA_2025).\n"
+            "• Asegúrate de que el PDF esté sincronizado (clic derecho → 'Siempre mantener en este dispositivo')."
         )
 
     shutil.copy2(archivo_local, destino)
@@ -120,7 +136,7 @@ def buscar(facturas, on_progress=None):
     if on_progress:
         on_progress("Conectando a SharePoint…")
 
-    # 1) Biblioteca y lista
+    # Biblioteca y lista
     if DRIVE_ID:
         drive_id, drive_name = DRIVE_ID, "(DRIVE_ID fijo)"
     else:
@@ -136,7 +152,7 @@ def buscar(facturas, on_progress=None):
     total = len(facturas)
     encontradas, no_encontradas, descargadas = [], [], []
 
-    # 2) Iterar facturas
+    #Iterar facturas
     for i, fac in enumerate(facturas, start=1):
         if on_progress:
             on_progress(f"Buscando {i}/{total}: {fac}")
@@ -150,7 +166,6 @@ def buscar(facturas, on_progress=None):
 
             if hits:
                 encontradas.append(fac)
-                # Descargar el primero
                 try:
                     file_ref = hits[0]["fields"]["FileRef"]
                     file_name = hits[0]["fields"]["FileLeafRef"]
@@ -171,7 +186,6 @@ def buscar(facturas, on_progress=None):
             if on_progress:
                 on_progress(f"{fac}: error ({e})")
 
-    # 3) Resumen
     if on_progress:
         on_progress(
             f"Finalizado: {len(encontradas)} encontradas, "

@@ -27,10 +27,23 @@ def _strip_accents(s: str) -> str:
     return ''.join(c for c in unicodedata.normalize('NFD', s) if unicodedata.category(c) != 'Mn')
 
 def _norm_amount(s: str) -> Optional[Decimal]:
-    s = s.strip().replace(" ", "").replace(chr(160), "")
-    if not s: return None
-    s = re.sub(r'^[US\$COPcol\$]*', '', s)
-    s = s.replace(".", "").replace(",", ".")
+    if not s:
+        return None
+        
+    s = s.strip()
+    s = s.replace(" ", "").replace(chr(160), "").replace(chr(8203), "")
+    s = re.sub(r'^[^0-9.,+-]*', '', s)
+    s = re.sub(r'[^0-9.,+-].*$', '', s)
+    
+    if not s:
+        return None
+
+    # Detectar formato colombiano con decimales: termina en ,00 o no tiene punto
+    if ',' in s and (s.endswith(('00','50','90')) or '.' not in s):
+        s = s.replace(".", "").replace(",", ".")
+    else:
+        s = s.replace(".", "").replace(",", "")
+
     try:
         return Decimal(s)
     except:
@@ -94,7 +107,8 @@ def extraer_total(path: Path) -> dict:
     texto_strip = _strip_accents(texto_up.replace("­", "-").replace(chr(173), "-"))  # ARREGLA GUION INVISIBLE
     
     # 1. LETRAS → PRIORIDAD MÁXIMA (AHORA INCLUYE CASOS SIN "SON" NI "PESOS")
-    patrones_letras = [
+    patrones_letras = [        
+        r"\(\s*([A-ZÑ0-9\s/]+?)\s*\)",  
         r"VALOR EN LETRAS.*?([A-ZÑ0-9\s/]{20,})", 
         r"SON[:\.\s]*([A-ZÑ0-9\s/]{15,})",
         r"([A-ZÑ0-9\s/]{20,})PESOS",
@@ -110,14 +124,19 @@ def extraer_total(path: Path) -> dict:
                     return {"total": total, "metodo": "LETRAS (100% SEGURO)", "evidencia": f"LETRAS: {frase.strip()[:80]}"}
             except: pass
 
-    # 2. TOTAL: + LÍNEA INMEDIATA (EL CASO EXACTO QUE FALLÓ)
-    for i, linea in enumerate(lineas):
-        if "TOTAL:" in linea.upper() and "$" in linea:
-            # Busca número en la misma línea
-            if nums := re.findall(r"\$\s*[\d.,]+", linea):
-                if amt := _norm_amount(nums[-1]):
-                    if amt >= 1000:
-                        return {"total": amt, "metodo": "TOTAL: EN MISMA LÍNEA", "evidencia": linea.strip()[:100]}
+    # 2. TOTAL: EN MISMA LÍNEA (CON O SIN $)
+    for linea in lineas:
+        if re.search(r"\bTOTAL\s*[:.]", linea.upper()):
+            numeros = re.findall(r"[\d\.,]+", linea)
+            for num in numeros:
+                if len(num.replace(".", "").replace(",", "")) >= 4:  
+                    if amt := _norm_amount(num):
+                        if amt >= 1000:
+                            return {
+                                "total": amt,
+                                "metodo": "TOTAL: EN MISMA LÍNEA",
+                                "evidencia": linea.strip()[:120]
+                            }
 
     # 3. VALOR TOTAL DE LA OPERACIÓN (ya estaba)
     keywords_operacion = ["VALOR TOTAL DE LA OPERACIÓN", "TOTAL OPERACIÓN", "VALOR A PAGAR", "TOTAL NETO"]
